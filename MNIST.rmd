@@ -1,0 +1,129 @@
+---
+title: "Convolutional Neural Network (CNN) Prediction"
+author: "Kyle Brewster"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Loading packages and data
+```{r}
+pacman::p_load(tidyverse, tidymodels, data.table, patchwork,
+               keras, tensorflow)
+set.seed(123)
+```
+
+```{r}
+train_df = fread("train.csv")
+test_df = fread("test.csv")
+```
+
+## Visualizing the Data
+
+An example of what a single observation looks like from the data
+```{r}
+ggplot(data = expand_grid(   
+      y = 28:1,
+      x = 1:28
+    ) %>% mutate(value = train_df[2, -"label"] %>% unlist()),
+       aes(x = x, y = y, fill = value)) + geom_raster() + coord_equal()
+```
+
+Note the slight differences in representation of the same digit
+```{r}
+vec = c(2,5,6,18,24,55,64,70,99,109,111,112,115,130,142,147)
+# Creating function to plot example of different unique digit values
+gg = lapply(X = vec, FUN = function(i) {
+  ggplot(data = expand_grid(
+      y = 28:1,
+      x = 1:28
+    ) %>% mutate(value = train_df[i,-"label"] %>% unlist()),
+    aes(x = x, y = y, fill = value)
+  ) +
+  geom_raster() +
+  coord_equal()+
+  theme_void()+
+  theme(legend.position = "none")
+})
+# Grid of examples
+(gg[[1]] + gg[[2]] + gg[[3]]) /
+  (gg[[5]] + gg[[6]] + gg[[7]]) /
+   (gg[[9]] + gg[[10]] + gg[[11]])  /
+    (gg[[13]] + gg[[14]] + gg[[15]])
+```
+
+An overview of the different values
+```{r}
+gg = lapply(X = c(1,17,8,4,9,22,7,11,12), FUN = function(i) {
+  ggplot(data = expand_grid(
+      y = 28:1,
+      x = 1:28
+    ) %>% mutate(value = train_df[i,-"label"] %>% unlist()),
+    aes(x = x, y = y, fill = value)
+  ) +
+  geom_raster() +
+  coord_equal()+
+  theme_void()+
+  theme(legend.position = "none")
+})
+
+(gg[[1]] + gg[[2]] + gg[[3]]) /
+  (gg[[4]] + gg[[5]] + gg[[6]]) /
+  (gg[[7]] + gg[[8]] + gg[[9]])
+```
+
+## Modeling
+
+First to prepare the data for modeling
+```{r}
+x.train = array_reshape(
+   as.matrix(train_df[,-1]), c(nrow(train_df), 784))
+x.test = array_reshape(
+   as.matrix(test_df), c(nrow(test_df), 784))
+
+# Dividing by range to scale values
+x.train = x.train/max(x.train)
+x.test = x.test/max(x.test)
+
+y.train = to_categorical(train_df$label, 10)
+```
+
+Creating our CNN model with keras
+```{r message=FALSE, warning=FALSE}
+cnn_mod = keras_model_sequential() %>%
+  layer_dense(units = 128, activation = 'relu', input_shape=c(784)) %>% 
+  layer_dropout(rate = 0.2) %>%
+  layer_dense(units = 64, activation = 'relu') %>%
+  layer_dropout(rate = 0.01) %>%
+  layer_dense(units = 10, activation = 'softmax')
+
+cnn_mod %>% compile(
+    loss = 'categorical_crossentropy',
+    optimizer = optimizer_adam(lr = 0.01, beta_1 = 0.9, beta_2 = 0.99),    
+    metrics = c('accuracy', 'categorical_crossentropy'))
+summary(cnn_mod)
+```
+
+## Results
+
+Fitting model
+```{r}
+fitted = cnn_mod %>%
+   fit(
+    x = x.train, y = y.train,
+    epochs = 250, 
+    batch_size = 128,
+    validation_split = 0.2)
+plot(fitted)
+summary(fitted)
+```
+
+Results of model accuracy
+```{r}
+cnn_mod %>% evaluate(x.train, y.train)
+```
+
